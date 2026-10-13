@@ -3874,14 +3874,30 @@
         // SUPABASE — login por e-mail + sincronização automática (dados e anexos)
         // =====================================================
         // >>> PREENCHA com os dados do SEU projeto Supabase (Project Settings → API). Veja o GUIA_SUPABASE.md <<<
-        const SUPABASE_URL = 'COLE_AQUI_A_PROJECT_URL';       // ex.: https://abcdxyz.supabase.co
-        const SUPABASE_ANON_KEY = 'COLE_AQUI_A_ANON_PUBLIC_KEY'; // chave "anon public" (pode ficar no app; os dados são protegidos por RLS)
+        const SUPABASE_URL = 'https://mzdzjbqjfndbkfouyngh.supabase.co';       // ex.: https://abcdxyz.supabase.co
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16ZHpqYnFqZm5kYmtmb3V5bmdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MjQ4NjAsImV4cCI6MjEwNzUwMDg2MH0.Bb0ZUirgsWMG8vjxo27He731q_nEmpTVCkIM9EW5vv4'; // chave "anon public" (pode ficar no app; os dados são protegidos por RLS)
         const SB_BUCKET = 'anexos';
         const SB_UID_KEY = 'isis2_uid', SB_DIRTY_KEY = 'isis2_dirty', SB_EMAIL_KEY = 'isis2_email';
         let sb = null, sbUser = null, sbReady = false, sbSaveTimer = null, sbRetryN = 0, sbRetryTimer = null, sbRemoteTs = '', sbErr = '', sbLastSync = null;
-        let sbGateMode = 'login', sbRecovery = /type=recovery/.test(location.hash), sbLoginBusy = false, sbSyncing = false;
+        let sbGateMode = (() => { try { return localStorage.getItem(SB_EMAIL_KEY) ? 'login' : 'signup'; } catch (e) { return 'login'; } })(), sbRecovery = /type=recovery/.test(location.hash), sbLoginBusy = false, sbSyncing = false;
 
+        function sbLoadLib() {
+            return new Promise(res => {
+                const urls = ['https://unpkg.com/@supabase/supabase-js@2.45.4/dist/umd/supabase.js', 'https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.45.4/umd/supabase.min.js'];
+                const next = () => {
+                    if (window.supabase || !urls.length) return res();
+                    const el = document.createElement('script'); el.src = urls.shift();
+                    el.onload = () => (window.supabase ? res() : next()); el.onerror = next; document.head.appendChild(el);
+                };
+                next();
+            });
+        }
         function sbConfigured() { return /^https:\/\/[^\s]+\.supabase\.co\/?$/.test(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 40 && !!window.supabase; }
+        function sbAskPass() { try { return localStorage.getItem('isis2_ask_pass') === '1'; } catch (e) { return false; } }
+        function sbSetAskPass(v) { try { v ? localStorage.setItem('isis2_ask_pass', '1') : localStorage.removeItem('isis2_ask_pass'); } catch (e) {} }
+        function sbUnlocked() { try { return sessionStorage.getItem('isis2_unlocked') === '1'; } catch (e) { return false; } }
+        function sbSetUnlocked() { try { sessionStorage.setItem('isis2_unlocked', '1'); } catch (e) {} }
+        function sbToggleAskPass() { sbSetAskPass(!sbAskPass()); sbSetUnlocked(); refreshBackupTab(); showToast(sbAskPass() ? 'Agora o app vai pedir sua senha sempre que for aberto.' : 'Agora o app abre direto, sem pedir senha.', 'success'); }
         function sbDirty() { try { return localStorage.getItem(SB_DIRTY_KEY) === '1'; } catch (e) { return false; } }
         function sbSetDirty(v) { try { v ? localStorage.setItem(SB_DIRTY_KEY, '1') : localStorage.removeItem(SB_DIRTY_KEY); } catch (e) {} }
         function dataBlob() { return new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json' }); }
@@ -3942,6 +3958,7 @@
                     ${m !== 'recovery' ? `<input id="sb-email" type="email" autocomplete="email" required placeholder="Seu e-mail" value="${esc(localStorage.getItem(SB_EMAIL_KEY) || '')}" class="${inp}">` : ''}
                     ${m !== 'forgot' ? `<input id="sb-pass" type="password" autocomplete="${m === 'login' ? 'current-password' : 'new-password'}" required minlength="6" placeholder="${m === 'login' ? 'Senha' : 'Senha (mínimo 6 caracteres)'}" class="${inp}">` : ''}
                     ${m === 'signup' || m === 'recovery' ? `<input id="sb-pass2" type="password" autocomplete="new-password" required minlength="6" placeholder="Repita a senha" class="${inp}">` : ''}
+                    ${m === 'login' || m === 'signup' ? `<label class="flex items-center gap-2 text-xs text-slate-600 text-left cursor-pointer"><input id="sb-keep" type="checkbox" ${sbAskPass() ? '' : 'checked'} class="w-4 h-4 accent-green-600"><span>Manter-me conectado neste aparelho (entrar sem pedir senha)</span></label>` : ''}
                     <button id="sb-submit" type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white py-3 rounded-xl font-bold text-sm shadow">${m === 'login' ? 'Entrar' : m === 'signup' ? 'Criar conta' : m === 'forgot' ? 'Enviar link' : 'Salvar nova senha'}</button>
                 </form>
                 <p id="login-gate-msg" class="text-xs mt-3 min-h-[1rem] ${/^✓/.test(msg || '') ? 'text-emerald-600' : 'text-rose-500'}">${esc(msg || '')}</p>
@@ -3960,6 +3977,9 @@
             const btn = document.getElementById('sb-submit'); sbLoginBusy = true; if (btn) btn.disabled = true; gateMsg('');
             try {
                 if (email) localStorage.setItem(SB_EMAIL_KEY, email);
+                const keep = document.getElementById('sb-keep');
+                if (keep) sbSetAskPass(!keep.checked);
+                if (m === 'login' || m === 'signup') sbSetUnlocked();
                 if (m === 'login') {
                     const { error } = await sb.auth.signInWithPassword({ email, password: pass });
                     if (error) throw error;
@@ -4120,7 +4140,12 @@
             sb.auth.onAuthStateChange((ev, session) => {
                 if (ev === 'PASSWORD_RECOVERY') { sbRecovery = true; setTimeout(() => showLoginGate(true), 0); return; }
                 if (ev === 'SIGNED_OUT') { if (sbUser) { sbUser = null; sbReady = false; setTimeout(() => showLoginGate(true), 0); } return; }
-                if (session && (ev === 'SIGNED_IN' || ev === 'INITIAL_SESSION')) setTimeout(() => sbAfterLogin(session.user), 0);
+                if (session && (ev === 'SIGNED_IN' || ev === 'INITIAL_SESSION')) {
+                    if (sbAskPass() && !sbUnlocked() && !sbRecovery) {
+                        // modo "sempre pedir senha": encerra só a sessão deste aparelho (os dados locais ficam guardados)
+                        setTimeout(async () => { try { await sb.auth.signOut({ scope: 'local' }); } catch (e) {} sbUser = null; sbReady = false; sbGateMode = 'login'; showLoginGate(true, 'Digite sua senha para entrar.'); }, 0);
+                    } else setTimeout(() => sbAfterLogin(session.user), 0);
+                }
                 else if (ev === 'INITIAL_SESSION' && !session) setTimeout(() => showLoginGate(true), 0);
             });
             document.addEventListener('visibilitychange', () => { if (document.hidden) { if (sbDirty() && sbReady) sbUpload(); } else { sbBannerUpdate(); sbPoll(); } });
@@ -4135,6 +4160,7 @@
             else if (sbUser) {
                 st = `<span class="text-emerald-600">Conectado como <b>${esc(sbUser.email || '')}</b>${sbLastSync ? ' · última sincronização às ' + sbLastSync.toLocaleTimeString('pt-BR') : ''}.</span>${sbDirty() ? '<br><span class="text-amber-600">Há alterações aguardando envio.</span>' : ''}`;
                 actions = `<button onclick="sbSyncManual()" class="${btn} bg-teal-600 hover:bg-teal-700 text-white"><i class="fa-solid fa-rotate"></i><span>Sincronizar agora</span></button>
+                           <button onclick="sbToggleAskPass()" class="${btn} bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200"><i class="fa-solid ${sbAskPass() ? 'fa-lock' : 'fa-lock-open'}"></i><span>Pedir senha ao abrir: ${sbAskPass() ? 'SIM' : 'NÃO'}</span></button>
                            <button onclick="sbSignOut()" class="${btn} bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200"><i class="fa-solid fa-right-from-bracket"></i><span>Sair da conta</span></button>`;
             } else { st = '<span class="text-slate-500">Não conectado.</span>'; actions = `<button onclick="showLoginGate(true)" class="${btn} bg-teal-600 hover:bg-teal-700 text-white"><i class="fa-solid fa-right-to-bracket"></i><span>Entrar</span></button>`; }
             return `<div class="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
@@ -5206,8 +5232,11 @@
             if (appData.profile.theme === 'dark') document.documentElement.classList.add('dark');
             switchTab('dashboard');
             await initBackupFolder();
+            const _filled = !/COLE_AQUI/.test(SUPABASE_URL + SUPABASE_ANON_KEY);
+            if (_filled && !window.supabase) await sbLoadLib(); // biblioteca não carregou: tenta outra fonte
+            if (_filled && !window.supabase) { showLoginGate(true, 'Não foi possível carregar o serviço de login. Verifique a internet (ou desative bloqueadores de anúncio) e recarregue a página.'); return; }
             if (!sbInit()) ensureProfileName(); // sem nuvem configurada: modo local
-            else if (!(appData.profile && appData.profile.nameSet)) { /* o nome é pedido após o login */ }
+            // com nuvem: o nome é pedido logo após o login
         };
     </script>
 <script>if(window.innerWidth<768){var _sb=document.getElementById('sidebar');if(_sb)_sb.classList.add('-translate-x-full');}</script>
