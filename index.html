@@ -210,6 +210,10 @@
                     <i class="fa-solid fa-id-card w-5 text-center text-teal-400 group-hover:scale-110 transition-transform"></i>
                     <span>Documentos Pessoais</span>
                 </a>
+                <a href="#" onclick="switchTab('ajuda')" id="nav-ajuda" class="nav-item flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all group hover:bg-side-900/80 text-slate-300 hover:text-white">
+                    <i class="fa-solid fa-circle-question w-5 text-center text-teal-400 group-hover:scale-110 transition-transform"></i>
+                    <span>Como usar / Ajuda</span>
+                </a>
                 <a href="#" onclick="switchTab('configuracoes')" id="nav-configuracoes" class="nav-item flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all group hover:bg-side-900/80 text-slate-300 hover:text-white">
                     <i class="fa-solid fa-gear w-5 text-center text-teal-400 group-hover:scale-110 transition-transform"></i>
                     <span>Configurações</span>
@@ -497,6 +501,8 @@
             if (!appData.saude.meds) appData.saude.meds = [];
             if (!Array.isArray(appData.saude.exams)) appData.saude.exams = [];
             if (!Array.isArray(appData.saude.vacinas)) appData.saude.vacinas = [];
+            if (!Array.isArray(appData.saude.treinos)) appData.saude.treinos = [];
+            if (!Array.isArray(appData.saude.peso)) appData.saude.peso = [];
             if (!appData.docsPessoais || typeof appData.docsPessoais !== 'object') appData.docsPessoais = { folders: [], files: [] };
             if (!Array.isArray(appData.docsPessoais.folders)) appData.docsPessoais.folders = [];
             if (!Array.isArray(appData.docsPessoais.files)) appData.docsPessoais.files = [];
@@ -598,7 +604,7 @@
             if (!d || typeof d !== 'object') return 0;
             const lists = [d.financeiro && d.financeiro.transactions, d.agenda, d.lembretes, d.contatos, d.atalhos, d.metas,
                            d.saude && d.saude.meds,
-                           d.saude && d.saude.exams, d.saude && d.saude.vacinas, d.docsPessoais && d.docsPessoais.folders, d.docsPessoais && d.docsPessoais.files,
+                           d.saude && d.saude.exams, d.saude && d.saude.vacinas, d.saude && d.saude.treinos, d.saude && d.saude.peso, d.docsPessoais && d.docsPessoais.folders, d.docsPessoais && d.docsPessoais.files,
                            d.aniversarios, d.notas, d.cartao && d.cartao.cards, d.cartao && d.cartao.entries];
             let n = lists.reduce((s, a) => s + (Array.isArray(a) ? a.length : 0), 0);
             n += Object.keys((d.saude && d.saude.waterLog) || {}).length;
@@ -855,7 +861,7 @@
         function switchTab(tabId) {
             currentActiveTab = tabId;
             if (tabId === 'financeiro') { financeFilterDate = localDateStr().slice(0, 7); PER.fin = Object.assign({ mode: 'mes' }, _perNow()); } // sempre abre no mês atual cheio
-            if (tabId !== 'saude') { saudeDiagOpen = false; saudeVacOpen = false; saudeCareOpen = false; }
+            if (tabId !== 'saude') { saudeDiagOpen = false; saudeVacOpen = false; saudeCareOpen = false; saudeGymOpen = false; }
             if (tabId !== 'docs') { docFolderId = null; docUnlocked.clear(); } // pastas com senha voltam a ficar trancadas
             document.querySelectorAll('.nav-item').forEach(el => {
                 el.classList.remove('bg-side-900', 'text-white', 'shadow-inner');
@@ -876,6 +882,7 @@
                 notas: 'Notas',
                 docs: 'Documentos Pessoais',
                 agenda: 'Agenda, Lembretes & Contatos',
+                ajuda: 'Como usar & Ajuda',
                 configuracoes: 'Configurações',
                 backup: 'Backup & Armazenamento'
             };
@@ -920,6 +927,7 @@
                 case 'notas': renderNotas(container); break;
                 case 'docs': renderDocs(container); break;
                 case 'agenda': renderAgenda(container); break;
+                case 'ajuda': renderAjuda(container); break;
                 case 'configuracoes': renderConfiguracoes(container); break;
                 case 'backup': renderBackup(container); break;
                 default: container.innerHTML = '<p>Página não encontrada.</p>';
@@ -1063,6 +1071,7 @@
         }
 
         function renderSaude(container) {
+            if (saudeGymOpen) { renderGym(container); return; }
             if (saudeDiagOpen) { renderDiagnostico(container); return; }
             if (saudeVacOpen) { renderVacinas(container); return; }
             if (saudeCareOpen) { renderAutocuidado(container); return; }
@@ -1107,6 +1116,10 @@
                                 <button onclick="openVac()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow flex items-center space-x-2">
                                     <i class="fa-solid fa-syringe"></i>
                                     <span>Vacinas</span>
+                                </button>
+<button onclick="openGym()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow flex items-center space-x-2">
+                                    <i class="fa-solid fa-dumbbell"></i>
+                                    <span>Academia</span>
                                 </button>
 <button onclick="openCare()" class="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow flex items-center space-x-2">
                                     <i class="fa-solid fa-spa"></i>
@@ -4196,6 +4209,421 @@
         }
 
         // =====================================================
+        // SAÚDE: ACADEMIA / EXERCÍCIOS (treinos, meta semanal, recordes, peso)
+        // =====================================================
+        const GYM_TYPES = ['Musculação', 'Corrida', 'Caminhada', 'Ciclismo', 'Natação', 'Funcional', 'Yoga / Pilates', 'Dança', 'Luta', 'Esporte', 'Outro'];
+        let saudeGymOpen = false, gymMonth = localDateStr().slice(0, 7);
+        function gymData() {
+            const s = appData.saude;
+            if (!Array.isArray(s.treinos)) s.treinos = [];
+            if (!Array.isArray(s.peso)) s.peso = [];
+            if (!Number(s.treinoMeta)) s.treinoMeta = 3;
+            return s;
+        }
+        function openGym() { saudeGymOpen = true; saudeDiagOpen = saudeVacOpen = saudeCareOpen = false; renderCurrentTabContent(); window.scrollTo(0, 0); }
+        function closeGym() { saudeGymOpen = false; renderCurrentTabContent(); }
+        function gymNav(d) { gymMonth = ymAdd(gymMonth, d); renderCurrentTabContent(); }
+        function gymWeekStart(ds) { const d = new Date(ds + 'T00:00:00'); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return localDateStr(d); }
+        function gymStreak(days) {
+            let n = 0; const d = new Date(); d.setHours(0, 0, 0, 0);
+            if (!days.has(localDateStr(d))) d.setDate(d.getDate() - 1);
+            while (days.has(localDateStr(d))) { n++; d.setDate(d.getDate() - 1); }
+            return n;
+        }
+        function renderGym(container) {
+            const S = gymData(), today = localDateStr();
+            const tr = S.treinos.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.id).localeCompare(String(a.id)));
+            const days = new Set(tr.map(t => t.date));
+            const ws = gymWeekStart(today);
+            const weekN = new Set(tr.filter(t => t.date >= ws && t.date <= today).map(t => t.date)).size;
+            const meta = Number(S.treinoMeta) || 3;
+            const mTr = tr.filter(t => (t.date || '').startsWith(gymMonth));
+            const mMin = mTr.reduce((s, t) => s + (Number(t.duration) || 0), 0);
+            const pct = Math.min(100, Math.round(weekN / meta * 100));
+            // calendário
+            const [y, m] = gymMonth.split('-').map(Number);
+            const start = new Date(y, m - 1, 1).getDay(), dim = new Date(y, m, 0).getDate();
+            let cells = ''; for (let i = 0; i < start; i++) cells += '<div></div>';
+            for (let d = 1; d <= dim; d++) {
+                const ds = `${gymMonth}-${pad2(d)}`, has = days.has(ds);
+                cells += `<button onclick="openGymModal(null,'${ds}')" class="aspect-square rounded-lg text-xs flex items-center justify-center ${has ? 'bg-emerald-500 text-white font-bold' : 'bg-slate-50 dark:bg-slate-700/40 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'} ${ds === today ? 'ring-2 ring-teal-500' : ''}">${d}</button>`;
+            }
+            // recordes (maior carga por exercício)
+            const rec = {};
+            S.treinos.forEach(t => (t.exercises || []).forEach(e => { const k = normKey(e.name); const w = Number(e.weight) || 0; if (!k || !w) return; if (!rec[k] || w > rec[k].w) rec[k] = { n: e.name, w, d: t.date }; }));
+            const recList = Object.values(rec).sort((a, b) => b.w - a.w).slice(0, 8);
+            const peso = S.peso.slice().sort((a, b) => b.date.localeCompare(a.date));
+            const pDelta = peso.length > 1 ? peso[0].kg - peso[peso.length - 1].kg : null;
+            const stat = (ic, l, v, c) => `<div class="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700"><p class="text-[10px] uppercase font-bold text-slate-400"><i class="fa-solid ${ic} mr-1 ${c}"></i>${l}</p><p class="text-xl font-bold text-slate-800 dark:text-white mt-1">${v}</p></div>`;
+            const card = t => `<div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-700/40 border border-slate-100 dark:border-slate-700">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0"><p class="font-bold text-sm text-slate-800 dark:text-white">${esc(t.type || 'Treino')}${t.title ? ' · ' + esc(t.title) : ''}</p>
+                    <p class="text-xs text-slate-500">${fmtBR(t.date)}${t.duration ? ' · ' + t.duration + ' min' : ''}${t.kcal ? ' · ' + t.kcal + ' kcal' : ''}${t.distance ? ' · ' + t.distance + ' km' : ''}</p></div>
+                    <div class="flex space-x-1 shrink-0"><button onclick="openGymModal('${t.id}')" class="p-1.5 text-slate-400 hover:text-teal-600"><i class="fa-solid fa-pen"></i></button><button onclick="deleteGym('${t.id}')" class="p-1.5 text-slate-400 hover:text-rose-500"><i class="fa-solid fa-trash"></i></button></div>
+                </div>
+                ${(t.exercises || []).length ? `<div class="mt-2 text-xs text-slate-600 dark:text-slate-300 space-y-0.5">${t.exercises.map(e => `<p>• <b>${esc(e.name)}</b>${e.sets || e.reps ? ' — ' + (e.sets || '?') + 'x' + (e.reps || '?') : ''}${e.weight ? ' · ' + e.weight + ' kg' : ''}</p>`).join('')}</div>` : ''}
+                ${t.notes ? `<p class="mt-2 text-xs text-slate-500 italic">${esc(t.notes)}</p>` : ''}</div>`;
+            container.innerHTML = `<div class="space-y-6 max-w-7xl mx-auto">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <button onclick="closeGym()" class="px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200"><i class="fa-solid fa-arrow-left mr-1"></i>Voltar para Saúde</button>
+                    <h2 class="text-xl font-bold text-slate-800 dark:text-white flex items-center space-x-2"><i class="fa-solid fa-dumbbell text-orange-500"></i><span>Academia & Exercícios</span></h2>
+                    <button onclick="openGymModal()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow flex items-center space-x-2"><i class="fa-solid fa-plus"></i><span>Registrar treino</span></button>
+                </div>
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    ${stat('fa-bullseye', 'Esta semana', weekN + ' / ' + meta, 'text-orange-500')}
+                    ${stat('fa-fire', 'Dias seguidos', gymStreak(days), 'text-rose-500')}
+                    ${stat('fa-calendar-check', 'Treinos no mês', mTr.length, 'text-emerald-500')}
+                    ${stat('fa-stopwatch', 'Minutos no mês', mMin, 'text-sky-500')}
+                </div>
+                <div class="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700">
+                    <div class="flex items-center justify-between mb-2 gap-2"><span class="text-xs font-bold text-slate-500 uppercase">Meta semanal</span>
+                        <span class="text-xs text-slate-500">Treinar <input type="number" min="1" max="7" value="${meta}" onchange="gymSetMeta(this.value)" class="w-14 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-center"> vezes por semana</span></div>
+                    <div class="h-3 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden"><div class="h-full bg-orange-500" style="width:${pct}%"></div></div>
+                    <p class="text-[11px] text-slate-500 mt-1">${weekN >= meta ? 'Meta da semana batida! 💪' : 'Faltam ' + (meta - weekN) + ' treino(s) para bater a meta da semana.'}</p>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                    <div class="bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
+                        <div class="flex items-center justify-between mb-3">
+                            <button onclick="gymNav(-1)" class="p-2 text-slate-500"><i class="fa-solid fa-chevron-left"></i></button>
+                            <span class="font-bold text-sm capitalize text-slate-800 dark:text-white">${fmtYM(gymMonth)}</span>
+                            <button onclick="gymNav(1)" class="p-2 text-slate-500"><i class="fa-solid fa-chevron-right"></i></button>
+                        </div>
+                        <div class="grid grid-cols-7 gap-1 text-center text-[10px] text-slate-400 font-bold mb-1">${['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(x => `<div>${x}</div>`).join('')}</div>
+                        <div class="grid grid-cols-7 gap-1">${cells}</div>
+                        <p class="text-[11px] text-slate-400 mt-2">Verde = dia com treino. Toque em um dia para registrar.</p>
+                    </div>
+                    <div class="space-y-6">
+                        <div class="bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
+                            <h3 class="font-bold text-slate-800 dark:text-white mb-3 flex items-center space-x-2"><i class="fa-solid fa-trophy text-amber-500"></i><span>Recordes de carga</span></h3>
+                            ${recList.length ? `<div class="space-y-1.5">${recList.map(r => `<div class="flex justify-between text-sm"><span class="truncate pr-2">${esc(r.n)}</span><b>${r.w} kg <span class="text-[10px] text-slate-400 font-normal">${fmtBR(r.d)}</span></b></div>`).join('')}</div>` : '<p class="text-sm text-slate-400">Registre exercícios com carga para ver seus recordes.</p>'}
+                        </div>
+                        <div class="bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
+                            <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-slate-800 dark:text-white flex items-center space-x-2"><i class="fa-solid fa-weight-scale text-sky-500"></i><span>Peso corporal</span></h3>
+                            <button onclick="openPesoModal()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-600 text-white">+ Peso</button></div>
+                            ${peso.length ? `<p class="text-2xl font-bold text-slate-800 dark:text-white">${peso[0].kg.toLocaleString('pt-BR')} kg</p>${pDelta !== null ? `<p class="text-xs text-slate-500 mb-2">Variação desde o 1º registro: <b class="${pDelta > 0 ? 'text-rose-500' : 'text-emerald-600'}">${pDelta > 0 ? '+' : ''}${pDelta.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg</b></p>` : ''}
+                            <div class="space-y-1 max-h-40 overflow-y-auto">${peso.slice(0, 12).map(p => `<div class="flex justify-between items-center text-xs"><span>${fmtBR(p.date)}</span><span><b>${p.kg.toLocaleString('pt-BR')} kg</b> <button onclick="deletePeso('${p.id}')" class="ml-2 text-slate-400 hover:text-rose-500"><i class="fa-solid fa-trash"></i></button></span></div>`).join('')}</div>` : '<p class="text-sm text-slate-400">Nenhum peso registrado.</p>'}
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
+                    <h3 class="font-bold text-slate-800 dark:text-white mb-3 flex items-center space-x-2"><i class="fa-solid fa-list text-teal-500"></i><span>Treinos de ${fmtYM(gymMonth)}</span></h3>
+                    ${mTr.length ? `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${mTr.map(card).join('')}</div>` : '<p class="text-sm text-slate-400 text-center py-6">Nenhum treino neste mês.</p>'}
+                </div></div>`;
+        }
+        function gymSetMeta(v) { gymData().treinoMeta = Math.max(1, Math.min(7, parseInt(v) || 3)); saveAppData(); renderCurrentTabContent(); }
+        function gymExRow(e = {}) {
+            const i = 'w-full px-2 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-sm';
+            return `<div class="gx-row grid grid-cols-12 gap-1.5 items-center">
+                <input class="gx-n ${i} col-span-5" placeholder="Exercício" value="${esc(e.name || '')}">
+                <input class="gx-s ${i} col-span-2" inputmode="numeric" placeholder="Séries" value="${esc(e.sets || '')}">
+                <input class="gx-r ${i} col-span-2" inputmode="numeric" placeholder="Reps" value="${esc(e.reps || '')}">
+                <input class="gx-w ${i} col-span-2" inputmode="decimal" placeholder="Kg" value="${esc(e.weight || '')}">
+                <button type="button" onclick="this.closest('.gx-row').remove()" class="col-span-1 text-slate-400 hover:text-rose-500"><i class="fa-solid fa-xmark"></i></button></div>`;
+        }
+        function gymAddRow() { document.getElementById('g-exs').insertAdjacentHTML('beforeend', gymExRow()); }
+        function openGymModal(id = null, dflt = '') {
+            const t = id ? gymData().treinos.find(x => x.id === id) : null;
+            const v = t || { date: dflt || localDateStr(), type: 'Musculação', exercises: [] };
+            showModal(t ? 'Editar treino' : 'Registrar treino', `
+                <form onsubmit="saveGym(event, ${id ? `'${id}'` : 'null'})" class="space-y-3">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div><label class="${LBL}">Data</label><input id="g-date" type="date" required value="${v.date}" class="${INP}"></div>
+                        <div><label class="${LBL}">Tipo</label><select id="g-type" class="${INP}">${GYM_TYPES.map(x => `<option ${x === v.type ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+                    </div>
+                    <div><label class="${LBL}">Nome / foco do treino (opcional)</label><input id="g-title" value="${esc(v.title || '')}" class="${INP}" placeholder="Ex.: Treino A — peito e tríceps"></div>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div><label class="${LBL}">Minutos</label><input id="g-dur" inputmode="numeric" value="${esc(v.duration || '')}" class="${INP}"></div>
+                        <div><label class="${LBL}">Calorias</label><input id="g-kcal" inputmode="numeric" value="${esc(v.kcal || '')}" class="${INP}"></div>
+                        <div><label class="${LBL}">Km</label><input id="g-dist" inputmode="decimal" value="${esc(v.distance || '')}" class="${INP}"></div>
+                    </div>
+                    <div><label class="${LBL}">Exercícios (nome · séries · repetições · carga)</label><div id="g-exs" class="space-y-1.5">${(v.exercises || []).map(gymExRow).join('')}</div>
+                        <button type="button" onclick="gymAddRow()" class="mt-2 text-xs font-bold text-teal-600"><i class="fa-solid fa-plus mr-1"></i>Adicionar exercício</button></div>
+                    <div><label class="${LBL}">Observações</label><textarea id="g-notes" rows="2" class="${INP}">${esc(v.notes || '')}</textarea></div>
+                    <div class="flex justify-end space-x-2 pt-1"><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">Cancelar</button><button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-teal-600 hover:bg-teal-700 text-white">Salvar</button></div>
+                </form>`);
+        }
+        function saveGym(e, id) {
+            e.preventDefault();
+            const g = i => document.getElementById(i).value.trim();
+            const exercises = Array.from(document.querySelectorAll('#g-exs .gx-row')).map(r => ({ name: r.querySelector('.gx-n').value.trim(), sets: r.querySelector('.gx-s').value.trim(), reps: r.querySelector('.gx-r').value.trim(), weight: r.querySelector('.gx-w').value.trim().replace(',', '.') })).filter(x => x.name);
+            const d = { date: g('g-date'), type: g('g-type'), title: g('g-title'), duration: g('g-dur'), kcal: g('g-kcal'), distance: g('g-dist').replace(',', '.'), notes: g('g-notes'), exercises };
+            const S = gymData();
+            if (id) Object.assign(S.treinos.find(x => x.id === id), d); else S.treinos.push(Object.assign({ id: uid() }, d));
+            gymMonth = d.date.slice(0, 7);
+            saveAppData(); closeModal(); renderCurrentTabContent(); showToast('Treino salvo!');
+        }
+        function deleteGym(id) { if (!confirm('Excluir este treino?')) return; const S = gymData(); S.treinos = S.treinos.filter(x => x.id !== id); saveAppData(); renderCurrentTabContent(); }
+        function openPesoModal() {
+            showModal('Registrar peso', `<form onsubmit="savePeso(event)" class="space-y-3">
+                <div class="grid grid-cols-2 gap-3"><div><label class="${LBL}">Data</label><input id="p-date" type="date" required value="${localDateStr()}" class="${INP}"></div>
+                <div><label class="${LBL}">Peso (kg)</label><input id="p-kg" inputmode="decimal" required placeholder="70,5" class="${INP}"></div></div>
+                <div class="flex justify-end space-x-2"><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">Cancelar</button><button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-teal-600 text-white">Salvar</button></div></form>`);
+        }
+        function savePeso(e) {
+            e.preventDefault();
+            const kg = parseFloat(document.getElementById('p-kg').value.replace(',', '.'));
+            if (!(kg > 0)) { showToast('Informe um peso válido.', 'error'); return; }
+            gymData().peso.push({ id: uid(), date: document.getElementById('p-date').value, kg });
+            saveAppData(); closeModal(); renderCurrentTabContent();
+        }
+        function deletePeso(id) { const S = gymData(); S.peso = S.peso.filter(x => x.id !== id); saveAppData(); renderCurrentTabContent(); }
+
+        // =====================================================
+        // CALCULADORA FLUTUANTE (arrastável; fica aberta ao trocar de tela)
+        // =====================================================
+        let calcExpr = '', calcHist = [], calcOpen = false;
+        function calcEval(src) {
+            const toks = []; const re = /\s*(\d+(?:\.\d+)?|\.\d+|[()+\-*\/%])/y; let m, i = 0;
+            src = src.replace(/,/g, '.').replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-');
+            while (i < src.length) { re.lastIndex = i; m = re.exec(src); if (!m) { if (/^\s*$/.test(src.slice(i))) break; throw new Error('x'); } toks.push(m[1]); i = re.lastIndex; }
+            let p = 0;
+            const peek = () => toks[p], next = () => toks[p++];
+            function primary() {
+                let t = next(), v;
+                if (t === '(') { v = { v: expr().v }; if (next() !== ')') throw new Error('x'); }
+                else if (t === '-') { v = { v: -primary().v }; }
+                else if (t === '+') { v = { v: primary().v }; }
+                else if (t !== undefined && /^[\d.]/.test(t)) v = { v: parseFloat(t) };
+                else throw new Error('x');
+                while (peek() === '%') { next(); v = { v: v.v, pct: true }; }
+                return v;
+            }
+            function term() { let l = primary(); while (peek() === '*' || peek() === '/') { const o = next(); const r = primary(); const rv = r.pct ? r.v / 100 : r.v; if (o === '/' && rv === 0) throw new Error('x'); l = { v: o === '*' ? l.v * rv : l.v / rv }; } return l; }
+            function expr() { let l = term(); while (peek() === '+' || peek() === '-') { const o = next(); const r = term(); const rv = r.pct ? l.v * r.v / 100 : r.v; l = { v: o === '+' ? l.v + rv : l.v - rv }; } return l; }
+            if (!toks.length) return null;
+            const r = expr(); if (p < toks.length) throw new Error('x');
+            // "50%" sozinho = 0,5
+            return r.pct ? r.v / 100 : r.v;
+        }
+        function calcFmt(n) { if (n === null || !isFinite(n)) return ''; return (+n.toFixed(10)).toLocaleString('pt-BR', { maximumFractionDigits: 10 }); }
+        function calcPreview() { try { const r = calcEval(calcExpr); return r === null ? '' : calcFmt(r); } catch (e) { return ''; } }
+        function calcRender() {
+            const ex = document.getElementById('calc-expr'), pr = document.getElementById('calc-prev'), h = document.getElementById('calc-hist');
+            if (!ex) return;
+            ex.textContent = calcExpr.replace(/\*/g, '×').replace(/\//g, '÷').replace(/\./g, ',') || '0';
+            pr.textContent = calcPreview() ? '= ' + calcPreview() : '';
+            h.innerHTML = calcHist.slice(-4).reverse().map((x, i) => `<button onclick="calcUseHist(${calcHist.length - 1 - i})" class="block w-full text-right text-[11px] text-slate-400 hover:text-teal-600 truncate">${esc(x.e)} = <b>${esc(x.r)}</b></button>`).join('');
+        }
+        function calcUseHist(i) { const x = calcHist[i]; if (x) { calcExpr = String(x.raw); calcRender(); } }
+        function calcKey(k) {
+            if (k === 'C') calcExpr = '';
+            else if (k === '⌫') calcExpr = calcExpr.slice(0, -1);
+            else if (k === '=') {
+                try { const r = calcEval(calcExpr); if (r !== null) { calcHist.push({ e: calcExpr.replace(/\*/g, '×').replace(/\//g, '÷').replace(/\./g, ','), r: calcFmt(r), raw: +r.toFixed(10) }); calcExpr = String(+r.toFixed(10)); } } catch (e) { showToast('Conta inválida', 'error'); }
+            } else if (k === '±') { calcExpr = calcExpr ? (calcExpr[0] === '-' ? calcExpr.slice(1) : '-' + calcExpr) : '-'; }
+            else {
+                const map = { '×': '*', '÷': '/', '−': '-', ',': '.' }; k = map[k] || k;
+                if (k === '.') { const last = calcExpr.split(/[-+*\/()%]/).pop(); if (last.includes('.')) return; if (last === '') calcExpr += '0'; }
+                if (/[+*\/]/.test(k) && /[+\-*\/]$/.test(calcExpr)) calcExpr = calcExpr.slice(0, -1);
+                calcExpr += k;
+            }
+            calcRender();
+        }
+        async function calcCopy() { const t = calcPreview() || calcExpr.replace(/\./g, ','); try { await navigator.clipboard.writeText(t); showToast('Copiado: ' + t, 'success'); } catch (e) { showToast('Não foi possível copiar.', 'error'); } }
+        function calcToggle(force) {
+            calcOpen = force === undefined ? !calcOpen : force;
+            const p = document.getElementById('calc-panel'); if (!p) return;
+            p.classList.toggle('hidden', !calcOpen);
+            if (calcOpen) calcRender();
+        }
+        function calcInit() {
+            if (document.getElementById('calc-fab')) return;
+            const keys = [['C', '(', ')', '⌫'], ['7', '8', '9', '÷'], ['4', '5', '6', '×'], ['1', '2', '3', '−'], ['±', '0', ',', '+']];
+            const kb = (k, cls) => `<button onclick="calcKey('${k}')" class="py-3 rounded-xl text-base font-bold ${cls}">${k}</button>`;
+            const num = 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white hover:bg-slate-200 dark:hover:bg-slate-600', op = 'bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-200 hover:bg-teal-200';
+            const html = `
+            <button id="calc-fab" onclick="calcToggle()" title="Calculadora" aria-label="Calculadora" class="fixed z-40 w-12 h-12 rounded-full bg-teal-600 hover:bg-teal-700 text-white shadow-xl flex items-center justify-center text-lg" style="right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px)"><i class="fa-solid fa-calculator"></i></button>
+            <div id="calc-panel" class="hidden fixed z-[45] w-[280px] max-w-[calc(100vw-16px)] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700" style="right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 76px)">
+                <div id="calc-drag" class="flex items-center justify-between px-3 py-2 cursor-move select-none border-b border-slate-100 dark:border-slate-700" style="touch-action:none">
+                    <span class="text-xs font-bold text-slate-500"><i class="fa-solid fa-grip mr-1"></i>Calculadora</span>
+                    <span><button onclick="calcCopy()" title="Copiar resultado" class="text-slate-400 hover:text-teal-600 mr-3"><i class="fa-regular fa-copy"></i></button><button onclick="calcToggle(false)" class="text-slate-400 hover:text-rose-500"><i class="fa-solid fa-xmark"></i></button></span>
+                </div>
+                <div class="px-3 pt-2"><div id="calc-hist" class="min-h-[1rem]"></div>
+                    <div id="calc-expr" class="text-right text-2xl font-bold text-slate-800 dark:text-white break-all leading-tight">0</div>
+                    <div id="calc-prev" class="text-right text-sm text-teal-600 min-h-[1.25rem]"></div></div>
+                <div class="grid grid-cols-4 gap-1.5 p-3">${keys.map(r => r.map(k => kb(k, /[÷×−+]/.test(k) ? op : (k === 'C' ? 'bg-rose-100 text-rose-600 hover:bg-rose-200' : num))).join('')).join('')}
+                    <button onclick="calcKey('%')" class="py-3 rounded-xl text-base font-bold ${op}">%</button>
+                    <button onclick="calcKey('=')" class="col-span-3 py-3 rounded-xl text-base font-bold bg-teal-600 hover:bg-teal-700 text-white">=</button></div>
+            </div>`;
+            document.body.insertAdjacentHTML('beforeend', html);
+            // arrastar
+            const pan = document.getElementById('calc-panel'), hd = document.getElementById('calc-drag'); let dx = 0, dy = 0, drag = false;
+            hd.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; drag = true; const r = pan.getBoundingClientRect(); dx = e.clientX - r.left; dy = e.clientY - r.top; hd.setPointerCapture(e.pointerId); });
+            hd.addEventListener('pointermove', e => { if (!drag) return; const x = Math.max(0, Math.min(innerWidth - pan.offsetWidth, e.clientX - dx)), y = Math.max(0, Math.min(innerHeight - pan.offsetHeight, e.clientY - dy)); pan.style.left = x + 'px'; pan.style.top = y + 'px'; pan.style.right = 'auto'; pan.style.bottom = 'auto'; });
+            hd.addEventListener('pointerup', () => { drag = false; });
+            // teclado
+            document.addEventListener('keydown', e => {
+                if (!calcOpen || /INPUT|TEXTAREA|SELECT/.test((e.target.tagName || '')) || e.ctrlKey || e.metaKey) return;
+                const k = e.key;
+                if (/^[0-9()%]$/.test(k)) calcKey(k); else if (k === ',' || k === '.') calcKey(','); else if (k === '+') calcKey('+'); else if (k === '-') calcKey('−'); else if (k === '*') calcKey('×'); else if (k === '/') { e.preventDefault(); calcKey('÷'); }
+                else if (k === 'Enter' || k === '=') { e.preventDefault(); calcKey('='); } else if (k === 'Backspace') calcKey('⌫'); else if (k === 'Escape') calcToggle(false); else if (k.toLowerCase() === 'c') calcKey('C');
+            });
+        }
+
+        // =====================================================
+        // FINANCEIRO: ANÁLISE (resumo do período + simulador CDI / Selic / poupança / LCI-LCA)
+        // =====================================================
+        const FA_DEF = { cdi: 14.9, selic: 15, ipca: 4.5 }; // valores de referência (editáveis; o app tenta buscar os atuais no Banco Central)
+        function faRates() { try { return Object.assign({}, FA_DEF, JSON.parse(localStorage.getItem('isis2_rates') || '{}')); } catch (e) { return Object.assign({}, FA_DEF); } }
+        const faR = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const faN = id => { const el = document.getElementById(id); let x = String(el ? el.value : '').trim(); if (x.includes(',')) x = x.replace(/\./g, '').replace(',', '.'); const v = parseFloat(x); return isFinite(v) ? v : 0; };
+        function faIR(months) { const d = months * 30; return d <= 180 ? 0.225 : d <= 360 ? 0.20 : d <= 720 ? 0.175 : 0.15; }
+        // aporte no início de cada mês; IR regressivo calculado por aporte (cada um com a sua idade)
+        function faSim(init, aporte, m, iM, taxable) {
+            let gross = init * Math.pow(1 + iM, m), invested = init, ir = 0;
+            if (taxable) ir += (gross - init) * faIR(m);
+            for (let k = 0; k < m; k++) {
+                const age = m - k, g = aporte * Math.pow(1 + iM, age);
+                gross += g; invested += aporte;
+                if (taxable) ir += (g - aporte) * faIR(age);
+            }
+            return { invested, gross, ir, net: gross - ir };
+        }
+        function faMonthsToGoal(init, aporte, iM, taxable, goal) {
+            if (goal <= init) return 0;
+            for (let m = 1; m <= 600; m++) if (faSim(init, aporte, m, iM, taxable).net >= goal) return m;
+            return null;
+        }
+        function faFmtM(m) { if (m === null) return 'mais de 50 anos'; if (m === 0) return 'já atingida'; const a = Math.floor(m / 12), r = m % 12; return [a ? a + (a > 1 ? ' anos' : ' ano') : '', r ? r + (r > 1 ? ' meses' : ' mês') : ''].filter(Boolean).join(' e '); }
+        function faMon(a) { return Math.pow(1 + a / 100, 1 / 12) - 1; }
+        function openFinAnalysis() {
+            const pf = perPrefix('fin'); let r = 0, d = 0; const cat = {};
+            appData.financeiro.transactions.forEach(t => {
+                if (pf && !(t.date && t.date.startsWith(pf))) return;
+                const e = finEffect(t, ''); r += e.r; d += e.d;
+                if (t.type === 'despesa') cat[t.category || 'Sem categoria'] = (cat[t.category || 'Sem categoria'] || 0) + (Number(t.amount) || 0);
+            });
+            const saldo = r - d, taxa = r > 0 ? saldo / r * 100 : null, top = Object.entries(cat).sort((a, b) => b[1] - a[1]).slice(0, 3);
+            const R = faRates(), inp = `${INP} text-right`;
+            const f = (id, l, v, extra = '') => `<div><label class="${LBL}">${l}</label><input id="${id}" inputmode="decimal" value="${v}" oninput="finAnCalc()" class="${inp}" ${extra}></div>`;
+            showModal('Análise financeira', `
+                <div class="space-y-5 text-sm">
+                    <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-700/40 border border-slate-100 dark:border-slate-700">
+                        <p class="text-xs font-bold uppercase text-slate-500 mb-2"><i class="fa-solid fa-chart-simple mr-1"></i>Seu período: ${esc(perLabel('fin'))}</p>
+                        <div class="grid grid-cols-3 gap-2 text-center">
+                            <div><p class="text-[10px] uppercase text-slate-400">Receitas</p><p class="font-bold text-emerald-600">${faR(r)}</p></div>
+                            <div><p class="text-[10px] uppercase text-slate-400">Despesas</p><p class="font-bold text-rose-600">${faR(d)}</p></div>
+                            <div><p class="text-[10px] uppercase text-slate-400">Sobra</p><p class="font-bold ${saldo >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${faR(saldo)}</p></div>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-3">${taxa === null ? 'Sem receitas no período para calcular a taxa de poupança.' : `Você guardou <b>${taxa.toFixed(0)}%</b> do que recebeu. ${taxa >= 20 ? 'Ótimo ritmo (referência comum: 20% ou mais).' : taxa >= 10 ? 'Bom começo; a referência comum é chegar a 20%.' : taxa >= 0 ? 'Abaixo da referência comum de 20%.' : 'As despesas passaram das receitas.'}`}</p>
+                        ${top.length ? `<p class="text-xs text-slate-500 mt-1">Maiores gastos: ${top.map(([k, v]) => `<b>${esc(k)}</b> (${faR(v)})`).join(', ')}.</p>` : ''}
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between gap-2 mb-2"><p class="text-xs font-bold uppercase text-slate-500"><i class="fa-solid fa-seedling mr-1"></i>Simulador de investimento</p>
+                            <button onclick="faFetchRates()" class="text-[11px] font-bold text-teal-600 underline">Atualizar taxas (Banco Central)</button></div>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            ${f('fa-init', 'Valor inicial (R$)', '0')}
+                            ${f('fa-apt', 'Aporte mensal (R$)', Math.max(0, Math.round(saldo)))}
+                            ${f('fa-m', 'Prazo (meses)', '12')}
+                            ${f('fa-cdi', 'CDI (% a.a.)', String(R.cdi).replace('.', ','))}
+                            ${f('fa-selic', 'Selic (% a.a.)', String(R.selic).replace('.', ','))}
+                            ${f('fa-ipca', 'Inflação IPCA (% a.a.)', String(R.ipca).replace('.', ','))}
+                            ${f('fa-pcdb', 'CDB: % do CDI', '100')}
+                            ${f('fa-plci', 'LCI/LCA: % do CDI', '90')}
+                            ${f('fa-goal', 'Meta (R$, opcional)', '')}
+                        </div>
+                        <p id="fa-status" class="text-[11px] text-slate-400 mt-2"></p>
+                    </div>
+                    <div id="fa-res"></div>
+                    <p class="text-[11px] text-slate-400">Simulação com taxas constantes, sem considerar variações futuras, taxas de corretagem/custódia (exceto aproximação no Tesouro Selic) nem IOF. Não é recomendação de investimento. IR regressivo sobre o rendimento: 22,5% (até 180 dias), 20% (181–360), 17,5% (361–720) e 15% (acima de 720); LCI/LCA e poupança são isentos para pessoa física.</p>
+                </div>`);
+            document.getElementById('modal-content').classList.replace('max-w-lg', 'max-w-3xl');
+            finAnCalc();
+            faFetchRates(true);
+        }
+        function finAnCalc() {
+            const init = faN('fa-init'), apt = faN('fa-apt'), m = Math.max(1, Math.min(600, Math.round(faN('fa-m')) || 1));
+            const cdi = faN('fa-cdi'), selic = faN('fa-selic'), ipca = faN('fa-ipca'), pc = faN('fa-pcdb') || 100, pl = faN('fa-plci') || 90, goal = faN('fa-goal');
+            const opts = [
+                { n: 'CDB / RDB', d: `${pc}% do CDI (${(cdi * pc / 100).toFixed(2).replace('.', ',')}% a.a.) · com IR`, i: faMon(cdi * pc / 100), tax: true },
+                { n: 'LCI / LCA', d: `${pl}% do CDI (${(cdi * pl / 100).toFixed(2).replace('.', ',')}% a.a.) · isento de IR`, i: faMon(cdi * pl / 100), tax: false },
+                { n: 'Tesouro Selic', d: 'aprox. CDI − 0,20% a.a. de custódia · com IR', i: faMon(Math.max(0, cdi - 0.2)), tax: true },
+                { n: 'Poupança', d: selic > 8.5 ? '0,5% ao mês (+TR ≈ 0) · isenta' : '70% da Selic · isenta', i: selic > 8.5 ? 0.005 : 0.7 * selic / 100 / 12, tax: false }
+            ].map(o => { const s = faSim(init, apt, m, o.i, o.tax); const real = s.net / Math.pow(1 + ipca / 100, m / 12); return Object.assign(o, s, { real, mg: goal > 0 ? faMonthsToGoal(init, apt, o.i, o.tax, goal) : undefined }); });
+            const best = Math.max(...opts.map(o => o.net));
+            const inv = opts[0].invested;
+            const el = document.getElementById('fa-res'); if (!el) return;
+            el.innerHTML = `<p class="text-xs font-bold uppercase text-slate-500 mb-2">Em ${m} ${m > 1 ? 'meses' : 'mês'} você investe <b>${faR(inv)}</b></p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${opts.map(o => `
+                    <div class="p-4 rounded-2xl border ${o.net === best ? 'border-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/30' : 'border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/40'}">
+                        <div class="flex items-center justify-between"><p class="font-bold text-slate-800 dark:text-white">${o.n}</p>${o.net === best ? '<span class="text-[10px] font-bold text-emerald-600">MELHOR RESULTADO</span>' : ''}</div>
+                        <p class="text-[11px] text-slate-500 mb-2">${o.d}</p>
+                        <p class="text-xl font-bold text-slate-800 dark:text-white">${faR(o.net)}</p>
+                        <div class="text-xs text-slate-500 mt-1 space-y-0.5">
+                            <p>Rendimento líquido: <b class="text-emerald-600">${faR(o.net - o.invested)}</b>${o.tax ? ` · IR: ${faR(o.ir)}` : ''}</p>
+                            <p>Poder de compra (descontada a inflação): <b>${faR(o.real)}</b> ${o.real >= o.invested ? '' : '<span class="text-rose-500">(abaixo do investido)</span>'}</p>
+                            ${o.mg !== undefined ? `<p>Para chegar a ${faR(goal)}: <b>${faFmtM(o.mg)}</b></p>` : ''}
+                        </div></div>`).join('')}</div>`;
+        }
+        async function faFetchRates(silent) {
+            const st = document.getElementById('fa-status');
+            const get = async code => { const r = await fetch(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${code}/dados/ultimos/1?formato=json`); const j = await r.json(); return parseFloat(j[0].valor); };
+            try {
+                if (st) st.textContent = 'Buscando taxas no Banco Central...';
+                const [cdi, selic, ipca] = await Promise.all([get(4389), get(432), get(13522)]);
+                const cur = { cdi, selic, ipca };
+                try { localStorage.setItem('isis2_rates', JSON.stringify(Object.assign(cur, { at: new Date().toISOString() }))); } catch (e) {}
+                [['fa-cdi', cdi], ['fa-selic', selic], ['fa-ipca', ipca]].forEach(([id, v]) => { const el = document.getElementById(id); if (el && isFinite(v)) el.value = String(v).replace('.', ','); });
+                if (st) st.textContent = 'Taxas atualizadas agora (Banco Central): CDI, Selic e IPCA 12 meses. Você pode editar qualquer valor.';
+                finAnCalc();
+            } catch (e) { if (st) st.textContent = 'Não foi possível buscar as taxas agora (sem internet?). Usando valores de referência — confira e edite os campos se necessário.'; }
+        }
+
+        // =====================================================
+        // COMO USAR + AJUDA (mensagem enviada pelo WhatsApp do suporte)
+        // =====================================================
+        const HELP_WHATS = '5548998638307'; // WhatsApp do suporte (DDI 55 + DDD 48 + número)
+        const HELP_SECTIONS = [
+            ['fa-calculator', 'Calculadora flutuante', ['O botão redondo com ícone de calculadora, no canto inferior direito, abre uma calculadora em qualquer tela.', 'Arraste pela barra do topo para mudar de lugar; ela continua aberta quando você troca de tela, então dá para consultar valores e calcular ao mesmo tempo.', 'Aceita parênteses e porcentagem (ex.: <i>200 + 10%</i> = 220). No computador, use o teclado (Enter = resultado, Esc = fechar). O botão de copiar leva o resultado para colar em outro campo.']],
+            ['fa-house', 'Resumo (tela inicial)', ['Mostra um panorama do seu dia: saldo financeiro, fatura do cartão de crédito, saldo dos cartões de débito/poupança, compromissos de hoje, lembretes pendentes, água e remédios.', 'Os valores podem ser escondidos com o botão de olho (útil em lugares públicos).', 'O botão <b>ISIS</b> abre dicas e alertas automáticos sobre suas finanças, saúde, agenda e lembretes.']],
+            ['fa-heart-pulse', 'Saúde & Bem-estar', ['<b>Água:</b> defina sua meta diária e registre cada copo; o app mostra quanto falta.', '<b>Remédios:</b> cadastre nome e horário e marque como tomado a cada dia; o calendário guarda o histórico.',
+                '<b>Academia:</b> botão laranja <i>Academia</i>. Registre cada treino (tipo, minutos, calorias, km, observações e a lista de exercícios com séries, repetições e carga). O calendário marca os dias treinados em verde, você define uma meta de treinos por semana, vê os dias seguidos, os minutos do mês e os <b>recordes de carga</b> por exercício. Também dá para registrar o <b>peso corporal</b> e acompanhar a variação.', '<b>Diagnóstico / Exames:</b> guarde exames e diagnósticos com data, observações e anexos (PDF ou foto).', '<b>Vacinas:</b> registre doses, datas e comprovantes.', '<b>Autocuidado:</b> crie rotinas por turno (manhã, tarde, noite), metas e acompanhe o que já cumpriu.']],
+            ['fa-wallet', 'Controle Financeiro', ['Toque em <b>Novo lançamento</b> para registrar receita, despesa ou transferência entre contas, com valor, categoria, data, status (pago/recebido ou pendente) e anexos.', 'É possível parcelar um lançamento: o app cria uma parcela por mês.', 'Use os filtros por período (dia, mês, ano), conta, categoria, tipo e valor. Clique no status para alternar entre pago e pendente.', 'O saldo do período aparece no topo.', '<b>Botão Análise:</b> mostra o resumo do período (receitas, despesas, sobra, % guardado e maiores gastos) e um <b>simulador de investimento</b>: informe valor inicial, aporte mensal e prazo e compare CDB, LCI/LCA, Tesouro Selic e Poupança, já com Imposto de Renda regressivo e descontando a inflação. As taxas de CDI, Selic e IPCA são buscadas no Banco Central (com opção de editar). Dá para informar uma meta e ver em quanto tempo você chega lá. É uma simulação, não uma recomendação de investimento.']],
+            ['fa-credit-card', 'Cartão de Crédito', ['Cadastre seus cartões com dia de fechamento e de vencimento.', 'Lance as compras (inclusive parceladas) e o app separa tudo por fatura, já considerando o fechamento.', 'Créditos e estornos entram negativos na fatura. Veja o total de cada mês e as categorias mais gastas.']],
+            ['fa-building-columns', 'Cartão (Débito e Poupança)', ['Cadastre contas de débito e poupança, defina o saldo e acompanhe os lançamentos de cada uma.', 'Transferências entre contas feitas no Financeiro atualizam os saldos automaticamente.']],
+            ['fa-calendar-days', 'Agenda, Lembretes e Contatos', ['A tela tem 3 abas:', '<b>Compromissos:</b> calendário ou lista, com data, hora, local e descrição. Compromissos concluídos vão para "finalizados".', '<b>Lembretes:</b> tarefas com data e prioridade; podem se repetir (diário, mensal, anual, a cada X dias ou dias da semana).', '<b>Contatos:</b> toque em <b>Cadastro de contato</b> para salvar nome, número e observação. Nenhum campo é obrigatório. Dá para buscar, editar e excluir, e tocar no número para ligar.']],
+            ['fa-note-sticky', 'Notas', ['Crie notas de texto ou listas de tarefas.', 'Cada nota pode ter <b>senha</b> opcional: ela é criptografada no seu aparelho. <b>Atenção:</b> se esquecer a senha de uma nota, não há como recuperá-la.']],
+            ['fa-id-card', 'Documentos Pessoais', ['Organize seus documentos (RG, CPF, contratos, comprovantes) em pastas e guarde arquivos ou fotos.', 'As pastas podem ter senha. Ao sair da tela, elas voltam a ficar trancadas.']],
+            ['fa-cake-candles', 'Mural de aniversariantes', ['Cadastre aniversários com nome, data e foto (opcional). O mural mostra quem faz aniversário no mês, em blocos ou lista.']],
+            ['fa-chart-pie', 'Categorias mais consumidas', ['Mostra para onde seu dinheiro mais vai, por categoria e por período. Use a busca e o filtro de período para analisar.']],
+            ['fa-gear', 'Configurações e relatórios', ['Altere como você quer ser chamado(a) e personalize as <b>cores</b> do app (e o modo escuro, pelo botão de lua/sol no topo).', '<b>Relatórios Excel:</b> baixe seus dados em planilha ou use o modelo para importar vários lançamentos de uma vez.']],
+            ['fa-cloud', 'Conta, backup e sincronização', ['Seus dados ficam salvos na sua conta (e-mail e senha) e aparecem em qualquer aparelho em que você entrar.', 'Em <b>Backup & Armazenamento</b> você pode: sincronizar agora, escolher se o app pede senha ao abrir, baixar um backup em arquivo e restaurar de um arquivo.', '<b>Sair da conta</b> apaga os dados daquele aparelho (eles continuam salvos na nuvem).']],
+            ['fa-mobile-screen', 'Instalar no celular', ['<b>Android (Chrome):</b> menu ⋮ → <i>Instalar app</i> ou <i>Adicionar à tela inicial</i>.', '<b>iPhone (Safari):</b> botão compartilhar → <i>Adicionar à Tela de Início</i>.', 'Depois é só abrir pelo ícone verde do ISIS, como um aplicativo.']]
+        ];
+        function renderAjuda(container) {
+            const sec = HELP_SECTIONS.map(([ic, t, items]) => `
+                <details class="group bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                    <summary class="cursor-pointer list-none flex items-center justify-between gap-3 p-4">
+                        <span class="flex items-center gap-3 min-w-0"><i class="fa-solid ${ic} w-5 text-center text-teal-500"></i><span class="font-bold text-sm text-slate-800 dark:text-white">${t}</span></span>
+                        <i class="fa-solid fa-chevron-down text-xs text-slate-400 group-open:rotate-180 transition-transform"></i>
+                    </summary>
+                    <div class="px-4 pb-4 space-y-2 text-sm text-slate-600 dark:text-slate-300">${items.map(x => `<p>${x}</p>`).join('')}</div>
+                </details>`).join('');
+            container.innerHTML = `<div class="max-w-3xl mx-auto space-y-6">
+                <div class="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
+                    <h3 class="font-bold text-lg text-slate-800 dark:text-white mb-1 flex items-center gap-2"><i class="fa-solid fa-circle-question text-teal-500"></i>Como usar o ISIS 2.0</h3>
+                    <p class="text-sm text-slate-500">O ISIS reúne sua vida pessoal em um lugar só. Use o menu lateral para abrir cada ferramenta (no celular, o botão ☰ no topo). Toque em um item abaixo para ver como ele funciona.</p>
+                </div>
+                <div class="space-y-2">${sec}</div>
+                <div id="ajuda-form" class="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
+                    <h3 class="font-bold text-lg text-slate-800 dark:text-white mb-1 flex items-center gap-2"><i class="fa-brands fa-whatsapp text-teal-500"></i>Ajuda</h3>
+                    <p class="text-sm text-slate-500 mb-4">Ficou com dúvida ou quer deixar uma mensagem? Escreva abaixo e toque em enviar: o WhatsApp abre com a mensagem pronta para o suporte. <b>A resposta chega para você no próprio WhatsApp.</b></p>
+                    <label class="${LBL}">Sua dúvida ou mensagem</label>
+                    <textarea id="help-msg" rows="5" class="${INP}" placeholder="Escreva aqui..."></textarea>
+                    <button onclick="sendHelp()" class="mt-3 w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-2xl text-sm font-bold shadow flex items-center justify-center gap-2"><i class="fa-brands fa-whatsapp"></i><span>Enviar pelo WhatsApp</span></button>
+                    <p class="text-[11px] text-slate-400 mt-3">O envio é feito pelo seu WhatsApp (você precisa apertar "enviar" lá). Seu nome e e-mail vão junto para facilitar o atendimento; nenhum dado financeiro ou pessoal do app é enviado.</p>
+                </div></div>`;
+        }
+        function sendHelp() {
+            const el = document.getElementById('help-msg'); const msg = el ? el.value.trim() : '';
+            if (!msg) { showToast('Escreva sua dúvida antes de enviar.', 'error'); return; }
+            const nome = (appData.profile && appData.profile.name) || '(sem nome)';
+            const email = (sbUser && sbUser.email) || '(não informado)';
+            const txt = `Ajuda ISIS 2.0\nNome: ${nome}\nE-mail: ${email}\n\n${msg}`;
+            window.open('https://wa.me/' + HELP_WHATS + '?text=' + encodeURIComponent(txt), '_blank');
+        }
+
+        // =====================================================
         // APARÊNCIA — cores personalizáveis
         // =====================================================
         const COLOR_PRESETS = ['#1F8A4C', '#16A34A', '#22C55E', '#0A2616', '#F4FAF6', '#FFB800', '#D4AF37', '#B8860B', '#FFE08A', '#FFF8E1', '#FFFFFF', '#F5F5F4', '#D6D3D1', '#9CA3AF', '#4B5563', '#1F2937', '#111111',
@@ -4566,6 +4994,7 @@
                             ${perBarHtml('fin')}
                             <div class="flex flex-wrap items-center gap-2">
                                 <button onclick="finToggleFilter()" class="px-3 py-2 rounded-xl text-xs font-bold ${finFilterOpen || nAct ? 'bg-teal-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}"><i class="fa-solid fa-filter mr-1"></i>Filtro${nAct ? ' (' + nAct + ')' : ''}<i class="fa-solid fa-chevron-${finFilterOpen ? 'up' : 'down'} ml-1.5 text-[9px]"></i></button>
+                                <button onclick="openFinAnalysis()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow flex items-center space-x-2"><i class="fa-solid fa-chart-line"></i><span>Análise</span></button>
                                 <button onclick="openFinanceModal()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow flex items-center space-x-2"><i class="fa-solid fa-plus"></i><span>Inserir Transação</span></button>
                             </div>
                         </div>
@@ -5231,6 +5660,7 @@
             applyColors(getColors());
             if (appData.profile.theme === 'dark') document.documentElement.classList.add('dark');
             switchTab('dashboard');
+            calcInit();
             await initBackupFolder();
             const _filled = !/COLE_AQUI/.test(SUPABASE_URL + SUPABASE_ANON_KEY);
             if (_filled && !window.supabase) await sbLoadLib(); // biblioteca não carregou: tenta outra fonte
