@@ -322,7 +322,7 @@
         let finFilterOpen = false, finSort = { k: 'date', dir: 1 };
         const _perNow = () => { const t = localDateStr(); return { day: t, month: t.slice(0, 7), year: t.slice(0, 4) }; };
         const PER = { fin: Object.assign({ mode: 'mes' }, _perNow()), ct: Object.assign({ mode: 'todos' }, _perNow()) };
-        let ctSel = new Set(), cardSort = { k: 'date', dir: 1 }, budSort = { k: 'pag', dir: 1 };
+        let cardSel = new Set(), ctSel = new Set(), cardSort = { k: 'date', dir: 1 }, budSort = { k: 'pag', dir: 1 };
         let financeFilterStatus = 'todos'; // 'todos', 'pago', 'pendente'
         let waterDate = localDateStr();
         let medSelectedDate = localDateStr();
@@ -3147,13 +3147,15 @@
                     <h3 class="font-bold text-lg text-slate-800 dark:text-white mb-1 flex items-center space-x-2"><i class="fa-solid fa-receipt text-teal-500"></i><span>Lançamentos da fatura</span></h3>
                     <p class="text-[11px] text-slate-400 mb-4">Em Finanças aparece apenas "Cartão de Crédito" com o valor final desta fatura.</p>
                     ${Object.keys(byCat).length ? `<div class="flex flex-wrap gap-2 mb-4">${Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<span class="px-2.5 py-1 rounded-lg text-xs bg-slate-100 dark:bg-slate-700"><b>${esc(k)}</b> R$ ${money(v)}</span>`).join('')}</div>` : ''}
+                    <div id="card-sel-bar">${cardSelBar()}</div>
                     ${entries.length === 0 ? `<div class="text-center py-10 text-slate-400"><i class="fa-solid fa-receipt text-4xl mb-2"></i><p class="text-sm">Nenhum lançamento nesta fatura.</p></div>` : `
                     <div class="overflow-x-auto"><table class="w-full text-left text-sm">
                         <thead class="bg-slate-50 dark:bg-slate-700/50 text-slate-400 uppercase text-[11px]"><tr>
-                            ${cardTh('Data', 'date', 'rounded-l-xl')}${cardTh('Nome', 'name')}${cardTh('Categoria', 'category')}${cardTh('Parcela', 'inst')}${cardTh('Observação', 'obs')}${cardTh('Valor', 'amount')}<th class="p-3 text-right rounded-r-xl">Ações</th>
+                            <th class="p-3 rounded-l-xl w-8"><input type="checkbox" id="card-sel-all" title="Selecionar todos os lançamentos desta fatura" onchange="cardSelAll(this.checked)" ${entries.length && entries.every(e => cardSel.has(e.id)) ? 'checked' : ''}></th>${cardTh('Data', 'date')}${cardTh('Nome', 'name')}${cardTh('Categoria', 'category')}${cardTh('Parcela', 'inst')}${cardTh('Observação', 'obs')}${cardTh('Valor', 'amount')}<th class="p-3 text-right rounded-r-xl">Ações</th>
                         </tr></thead>
                         <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
                         ${entries.map(e => `<tr class="hover:bg-slate-50/50 dark:hover:bg-slate-700/30">
+                            <td class="p-3"><input type="checkbox" ${cardSel.has(e.id) ? 'checked' : ''} onchange="cardSelToggle('${e.id}', this.checked)"></td>
                             <td class="p-3 text-slate-500 whitespace-nowrap">${fmtBR(e.date)}</td>
                             <td class="p-3 font-medium text-slate-800 dark:text-white">${esc(e.name)}</td>
                             <td class="p-3"><span class="px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 dark:bg-slate-700">${esc(e.category)}</span></td>
@@ -3165,11 +3167,31 @@
                                 <button onclick="deleteCardEntry('${e.id}')" class="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg text-xs hover:text-rose-600"><i class="fa-solid fa-trash"></i></button>
                             </td></tr>`).join('')}
                         </tbody>
-                        <tfoot><tr><td colspan="5" class="p-3 text-right font-bold text-slate-500">Total da fatura</td><td class="p-3 font-extrabold text-rose-600">R$ ${money(total)}</td><td></td></tr></tfoot>
+                        <tfoot><tr><td colspan="6" class="p-3 text-right font-bold text-slate-500">Total da fatura</td><td class="p-3 font-extrabold text-rose-600">R$ ${money(total)}</td><td></td></tr></tfoot>
                     </table></div>`}
                 </div>
             </div>`;
         }
+        function cardCurEntries() { const c = cardById(cardSelectedId); return c ? cardEntriesFor(c.id, cardInvMonth) : []; }
+        function cardSelBar() {
+            let n = 0, buy = 0, cred = 0;
+            cardCurEntries().forEach(e => { if (!cardSel.has(e.id)) return; const v = Number(e.amount) || 0; n++; if (v < 0) cred += -v; else buy += v; });
+            if (!n) return `<p class="text-[11px] text-slate-400 mb-3"><i class="fa-regular fa-square-check mr-1"></i>Marque os lançamentos na lista para ver a soma.</p>`;
+            return `<div class="flex flex-wrap items-center gap-x-6 gap-y-1 p-3.5 mb-3 rounded-2xl bg-teal-50 dark:bg-teal-950/40 text-sm text-slate-700 dark:text-slate-200">
+                <b>${n} selecionado${n > 1 ? 's' : ''}</b>
+                <span>Compras: <b class="text-rose-600">R$ ${money(buy)}</b></span>
+                ${cred ? `<span>Créditos: <b class="text-emerald-600">R$ ${money(cred)}</b></span>` : ''}
+                <span>Soma: <b class="text-teal-600">R$ ${money(buy - cred)}</b></span>
+                <button onclick="cardSelClear()" class="ml-auto text-xs font-semibold underline text-teal-700 dark:text-teal-300">Limpar seleção</button>
+            </div>`;
+        }
+        function cardSelToggle(id, on) {
+            if (on) cardSel.add(id); else cardSel.delete(id);
+            const bar = document.getElementById('card-sel-bar'); if (bar) bar.innerHTML = cardSelBar();
+            const all = document.getElementById('card-sel-all'), es = cardCurEntries(); if (all) all.checked = es.length > 0 && es.every(e => cardSel.has(e.id));
+        }
+        function cardSelAll(on) { cardCurEntries().forEach(e => { if (on) cardSel.add(e.id); else cardSel.delete(e.id); }); renderCurrentTabContent(); }
+        function cardSelClear() { cardSel.clear(); renderCurrentTabContent(); }
         function cardSortBy(k) { if (cardSort.k === k) cardSort.dir *= -1; else cardSort = { k, dir: k === 'amount' ? -1 : 1 }; renderCurrentTabContent(); }
         function cardTh(l, k, cls) { return `<th class="p-3 ${cls || ''} cursor-pointer select-none hover:text-slate-600 dark:hover:text-slate-200 whitespace-nowrap" onclick="cardSortBy('${k}')" title="Clique para ordenar">${l}${cardSort.k === k ? ` <i class="fa-solid fa-arrow-${cardSort.dir > 0 ? 'up' : 'down'} text-[9px]"></i>` : ''}</th>`; }
         function cardCmp(a, b) {
@@ -4744,7 +4766,7 @@
             ['fa-heart-pulse', 'Saúde & Bem-estar', ['<b>Água:</b> defina sua meta diária e registre cada copo; o app mostra quanto falta.', '<b>Remédios:</b> cadastre nome, dose (ex.: 50mg), tipo (<b>Contínuo</b>, <b>Controlado</b> ou <b>Período</b>), horário, data de início e até quando tomar (ou marque "Sem data definida"). Informe a frequência: "tomar X por vez, a cada X horas/dias/meses". Marque como tomado a cada dia; o calendário guarda o histórico.', 'Nos remédios <b>Controlados</b> você pode incluir <b>alterações de dose</b>: informe a data e a nova dose (ex.: 20/10 → 75mg) e ela passa a valer a partir daquele dia. O cartão mostra a dose vigente e avisa "Dose muda para 75mg em 20/10". Dá para editar, incluir ou apagar alterações quando quiser. Depois da data final o cartão fica esmaecido com a etiqueta "encerrado", e os avisos do ISIS não cobram remédios encerrados, que ainda não começaram ou tomados a cada vários dias/meses.',
                 '<b>Exercícios:</b> botão laranja <i>Exercícios</i>. Registre cada treino (tipo, minutos, calorias, km, observações e a lista de exercícios com séries, repetições e carga). O calendário marca os dias treinados em verde, você escolhe os <b>dias da semana</b> em que quer treinar (a meta semanal é o número de dias marcados, e os dias planejados ficam com contorno laranja; sem dias marcados, vale o campo "X vezes por semana"), vê os dias seguidos, os minutos do mês e os <b>recordes de carga</b> por exercício. Também dá para registrar o <b>peso corporal</b> e acompanhar a variação.', '<b>Diagnóstico / Exames:</b> guarde exames e diagnósticos com data, observações e anexos (PDF ou foto).', '<b>Vacinas:</b> registre doses, datas e comprovantes.', '<b>Autocuidado:</b> crie rotinas por turno (manhã, tarde, noite), metas e acompanhe o que já cumpriu.']],
             ['fa-wallet', 'Controle Financeiro', ['Toque em <b>Novo lançamento</b> para registrar receita, despesa ou transferência entre contas, com valor, categoria, data, status (pago/recebido ou pendente) e anexos.', 'É possível parcelar um lançamento: o app cria uma parcela por mês.', 'Use os filtros por período (dia, mês, ano), conta, categoria, tipo e valor. Clique no status para alternar entre pago e pendente.', 'O saldo do período aparece no topo.', 'A tela é dividida em <b>Pendentes</b> (em cima) e <b>Resolvidos</b> (embaixo). Ao marcar um título como pago ou recebido, ele muda de caixa sozinho. Quando não houver mais nada pendente, aparece só a lista de movimentações.', '<b>Botão Análise:</b> mostra o resumo do período (receitas, despesas, sobra, % guardado e maiores gastos) e um <b>simulador de investimento</b>: informe valor inicial, aporte mensal e prazo e compare CDB, LCI/LCA, Tesouro Selic e Poupança, já com Imposto de Renda regressivo e descontando a inflação. As taxas de CDI, Selic e IPCA são buscadas no Banco Central (com opção de editar). Dá para informar uma meta e ver em quanto tempo você chega lá. É uma simulação, não uma recomendação de investimento.']],
-            ['fa-credit-card', 'Cartão de Crédito', ['Cadastre seus cartões com dia de fechamento e de vencimento.', 'Lance as compras (inclusive parceladas) e o app separa tudo por fatura, já considerando o fechamento.', 'Créditos e estornos entram negativos na fatura. Veja o total de cada mês e as categorias mais gastas.', 'Cartão dividido com alguém? Ao cadastrar o cartão, marque "Compartilhada" e inclua os nomes. Nos lançamentos o app pergunta quem pagou; se foram vários, informe quanto cada um pagou (a soma não pode passar do valor da parcela). A fatura mostra o total pago por pessoa.']],
+            ['fa-credit-card', 'Cartão de Crédito', ['Cadastre seus cartões com dia de fechamento e de vencimento.', 'Lance as compras (inclusive parceladas) e o app separa tudo por fatura, já considerando o fechamento.', 'Créditos e estornos entram negativos na fatura. Veja o total de cada mês e as categorias mais gastas.', 'Marque as caixinhas dos lançamentos da fatura para ver a soma dos selecionados (como no Financeiro).', 'Cartão dividido com alguém? Ao cadastrar o cartão, marque "Compartilhada" e inclua os nomes. Nos lançamentos o app pergunta quem pagou; se foram vários, informe quanto cada um pagou (a soma não pode passar do valor da parcela). A fatura mostra o total pago por pessoa.']],
             ['fa-building-columns', 'Cartão (Débito e Poupança)', ['Cadastre contas de débito e poupança, defina o saldo e acompanhe os lançamentos de cada uma.', 'Transferências entre contas feitas no Financeiro atualizam os saldos automaticamente.']],
             ['fa-calendar-days', 'Agenda, Lembretes e Contatos', ['A tela tem 3 abas:', '<b>Compromissos:</b> calendário ou lista, com data, hora, local e descrição. Compromissos concluídos vão para "finalizados".', '<b>Lembretes:</b> tarefas com data e prioridade; podem se repetir (diário, mensal, anual, a cada X dias ou dias da semana).', '<b>Contatos:</b> toque em <b>Cadastro de contato</b> para salvar nome, número e observação. Nenhum campo é obrigatório. Dá para buscar, editar e excluir, e tocar no número para ligar.']],
             ['fa-note-sticky', 'Notas', ['Crie notas de texto ou listas de tarefas.', 'Cada nota pode ter <b>senha</b> opcional: ela é criptografada no seu aparelho. <b>Atenção:</b> se esquecer a senha de uma nota, não há como recuperá-la.']],
